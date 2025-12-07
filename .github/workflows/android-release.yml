@@ -215,7 +215,8 @@ jobs:
           new_release = None
 
           for release in releases:
-              if VERSION_CODE in release.get('versionCodes', []):
+              # versionCodes is a list of strings from the API
+              if str(VERSION_CODE) in release.get('versionCodes', []):
                   # This is our new release - mark as completed
                   release['status'] = 'completed'
                   new_release = release
