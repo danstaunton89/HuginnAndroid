@@ -181,7 +181,7 @@ jobs:
           # Create temp service account file
           echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
 
-          # Publish the draft release
+          # Publish the draft release by updating existing draft to completed
           python3 << END
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
@@ -201,17 +201,36 @@ jobs:
 
           print(f"Created edit: {edit_id}")
 
-          # Update track to published status
+          # Get current track status
+          track = service.edits().tracks().get(
+              packageName=PACKAGE_NAME,
+              editId=edit_id,
+              track='internal'
+          ).execute()
+
+          print(f"Current track: {track}")
+
+          # Find the draft release and update its status to completed
+          releases = track.get('releases', [])
+          new_release = None
+
+          for release in releases:
+              if VERSION_CODE in release.get('versionCodes', []):
+                  # This is our new release - mark as completed
+                  release['status'] = 'completed'
+                  new_release = release
+                  break
+
+          if not new_release:
+              print(f"ERROR: Could not find draft release for version {VERSION_CODE}")
+              exit(1)
+
+          # Update track with ONLY the new release (replaces all previous releases)
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
               track='internal',
-              body={
-                  'releases': [{
-                      'versionCodes': [VERSION_CODE],
-                      'status': 'completed'
-                  }]
-              }
+              body={'releases': [new_release]}
           ).execute()
 
           print(f"Updated track: {track_response}")
