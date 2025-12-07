@@ -48,6 +48,10 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/keystore.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/keystore.properties
 
+      - name: Make gradlew executable
+        working-directory: android
+        run: chmod +x gradlew
+
       - name: Build Android App Bundle
         working-directory: android
         run: ./gradlew bundleRelease --no-daemon
