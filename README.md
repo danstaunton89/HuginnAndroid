@@ -1,5 +1,7 @@
 # HuginnAndroid
 
+[![Android Release Build](https://github.com/danstaunton89/HuginnAndroid/actions/workflows/android-release.yml/badge.svg)](https://github.com/danstaunton89/HuginnAndroid/actions/workflows/android-release.yml)
+
 React Native Android app for Huginn Health Tracker.
 
 ## Features
@@ -34,9 +36,30 @@ npm install
 # Start Metro bundler
 npm start
 
-# Build APK
-gradlew.bat assembleDebug
+# Build debug APK
+cd android
+./gradlew assembleDebug
+
+# Build release AAB (requires keystore setup)
+./gradlew bundleRelease
 ```
+
+## Deployment
+
+Automated CI/CD deployment to Google Play Store using GitHub Actions.
+
+**Quick Deploy:**
+```bash
+# Tag a new version
+git tag v1.0.0
+git push origin v1.0.0
+
+# GitHub Actions will automatically:
+# 1. Build signed .aab
+# 2. Upload to Play Store (Internal Testing)
+```
+
+**See [DEPLOYMENT.md](DEPLOYMENT.md) for complete setup guide.**
 
 ## Backend API
 
