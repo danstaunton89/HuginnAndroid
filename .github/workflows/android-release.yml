@@ -16,6 +16,77 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate version code against Play Store
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "Checking version code against Google Play Store..."
+
+          # Get current versionCode from build.gradle
+          CURRENT_VERSION=$(grep "versionCode" android/app/build.gradle | head -1 | awk '{print $2}')
+          echo "Current versionCode in build.gradle: $CURRENT_VERSION"
+
+          # Install Google API client
+          pip install --quiet google-auth google-auth-httplib2 google-api-python-client
+
+          # Create temp service account file
+          echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
+
+          # Query Play Store for latest version
+          python3 << END
+          import sys
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          SCOPES = ['https://www.googleapis.com/auth/androidpublisher']
+          PACKAGE_NAME = 'com.blacksquirrel.healthtracker'
+
+          try:
+              credentials = service_account.Credentials.from_service_account_file(
+                  'service-account.json', scopes=SCOPES)
+
+              service = build('androidpublisher', 'v3', credentials=credentials)
+
+              # Create edit
+              edit = service.edits().insert(packageName=PACKAGE_NAME, body={}).execute()
+              edit_id = edit['id']
+
+              # Get internal track
+              track = service.edits().tracks().get(
+                  packageName=PACKAGE_NAME,
+                  editId=edit_id,
+                  track='internal'
+              ).execute()
+
+              # Get latest version code
+              latest_version = 0
+              if 'releases' in track and len(track['releases']) > 0:
+                  for release in track['releases']:
+                      version_codes = release.get('versionCodes', [])
+                      if version_codes:
+                          latest_version = max(latest_version, max(version_codes))
+
+              print(f"Latest versionCode in Play Store (internal): {latest_version}")
+
+              current = int($CURRENT_VERSION)
+              if current <= latest_version:
+                  print(f"ERROR: Current versionCode ({current}) must be greater than Play Store version ({latest_version})")
+                  print(f"Please increment versionCode in android/app/build.gradle to {latest_version + 1} or higher")
+                  sys.exit(1)
+              else:
+                  print(f"SUCCESS: Version validation passed ({current} > {latest_version})")
+
+          except Exception as e:
+              print(f"ERROR: Failed to validate version: {e}")
+              sys.exit(1)
+          END
+
+          # Cleanup
+          rm -f service-account.json
+
+          echo "Version validation complete!"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
