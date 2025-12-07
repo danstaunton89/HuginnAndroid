@@ -63,7 +63,7 @@ jobs:
                   for release in track['releases']:
                       version_codes = release.get('versionCodes', [])
                       if version_codes:
-                          latest_version = max(latest_version, max(version_codes))
+                          latest_version = max(latest_version, max(int(v) for v in version_codes))
 
               current = int($CURRENT_VERSION)
               next_version = max(current, latest_version + 1)
@@ -161,4 +161,5 @@ jobs:
           packageName: com.blacksquirrel.healthtracker
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
+          status: draft
           inAppUpdatePriority: 2
