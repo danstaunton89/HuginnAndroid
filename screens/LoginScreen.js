@@ -1,15 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, Linking, Image } from 'react-native';
-// Removed expo-auth-session and expo-crypto - using manual OAuth implementation
+import { StyleSheet, Text, View, TouchableOpacity, Alert, Linking, Image, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
-import { COLORS } from '../config/theme';
 
 export default function LoginScreen({ navigation }) {
   const [isLoading, setIsLoading] = useState(false);
+  const [showRequestForm, setShowRequestForm] = useState(false);
   const [currentCodeVerifier, setCurrentCodeVerifier] = useState(null);
-
-  // Using custom domain for OAuth callback
 
   // OAuth configuration
   const discovery = {
@@ -22,7 +19,6 @@ export default function LoginScreen({ navigation }) {
   const clientId = '7206770810-si1kak4s3dhldh8egk6a8dm7op0kfk42.apps.googleusercontent.com';
 
   // For production, use our backend's mobile OAuth endpoint
-  // The backend has /auth/mobile/callback for handling mobile OAuth
   const redirectUri = `${API_BASE_URL}/auth/mobile/callback`;
 
   // Handle deep link from custom domain callback
@@ -30,13 +26,10 @@ export default function LoginScreen({ navigation }) {
     const handleDeepLink = async (url) => {
       console.log('Deep link received:', url);
 
-      // Handle our custom scheme: com.blacksquirrel.healthtracker://auth/callback?token=...
       if (url && url.includes('auth/callback')) {
         try {
           setIsLoading(true);
 
-          // Parse query parameters from custom scheme URL
-          // URL format: com.blacksquirrel.healthtracker://auth/callback?token=xxx&registrationComplete=true
           const queryString = url.split('?')[1];
           if (!queryString) {
             console.error('No query string in URL:', url);
@@ -102,49 +95,6 @@ export default function LoginScreen({ navigation }) {
     };
   }, []);
 
-  const handleAuthCode = async (code) => {
-    console.log('handleAuthCode called with code:', code?.substring(0, 20) + '...');
-    setIsLoading(true);
-
-    try {
-      // For mobile OAuth, we don't use PKCE, so we can exchange the code directly
-      console.log('Exchanging code for token...');
-
-      // Exchange authorization code for token via our backend
-      const tokenResponse = await fetch(`${API_BASE_URL}/auth/mobile/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code: code
-        }),
-      });
-
-      const data = await tokenResponse.json();
-      console.log('Token exchange response:', { success: data.success, hasToken: !!data.token });
-
-      if (data.success && data.token) {
-        await AsyncStorage.setItem('authToken', data.token);
-
-        // Check if registration is complete
-        if (data.registrationComplete === false) {
-          setIsLoading(false);
-          navigation.navigate('Register', { email: data.email });
-        } else {
-          setIsLoading(false);
-          navigation.navigate('Main');
-        }
-      } else {
-        throw new Error(data.error || 'Failed to authenticate');
-      }
-    } catch (error) {
-      console.error('Auth code handling error:', error);
-      setIsLoading(false);
-      Alert.alert('Login Error', error.message || 'Failed to complete authentication');
-    }
-  };
-
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
@@ -163,7 +113,6 @@ export default function LoginScreen({ navigation }) {
       await Linking.openURL(oauthUrl);
 
       // Loading state will be cleared when the deep link callback is received
-      // or user can cancel by reopening the app
     } catch (error) {
       console.error('Login error:', error);
       Alert.alert('Login Error', error.message || 'Failed to start authentication');
@@ -173,62 +122,63 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.authContainer}>
-        <Image
-          source={require('../assets/images/logo.jpg')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <Text style={styles.tagline}>Your personal health companion</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.authContainer}>
+          <Image
+            source={require('../assets/images/crow.png')}
+            style={styles.crowImage}
+            resizeMode="contain"
+          />
 
-        <View style={styles.features}>
-          <View style={styles.feature}>
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={styles.featureText}>Track meals and nutrition</Text>
-          </View>
-          <View style={styles.feature}>
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={styles.featureText}>Monitor weight and blood pressure</Text>
-          </View>
-          <View style={styles.feature}>
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={styles.featureText}>Record mood and wellness</Text>
-          </View>
-          <View style={styles.feature}>
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={styles.featureText}>Track water intake</Text>
-          </View>
-          <View style={styles.feature}>
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={styles.featureText}>Log exercise activities</Text>
-          </View>
-          <View style={styles.feature}>
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={styles.featureText}>Sync with fitness devices</Text>
-          </View>
-        </View>
+          <Text style={styles.title}>Huginn</Text>
+          <Text style={styles.subtitle}>Your personal health companion</Text>
 
-        <View style={styles.buttonGroup}>
+          <Text style={styles.deviceText}>
+            Works with <Text style={styles.deviceBold}>Fitbit</Text>, <Text style={styles.deviceBold}>Garmin</Text> and <Text style={styles.deviceBold}>Withings</Text>
+          </Text>
+
+          <View style={styles.betaWarning}>
+            <Text style={styles.betaTitle}>Invite-Only Beta</Text>
+            <Text style={styles.betaSubtext}>Registration requires a valid invitation code</Text>
+            <TouchableOpacity onPress={() => setShowRequestForm(true)}>
+              <Text style={styles.requestLink}>Request an invite →</Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             style={[styles.googleButton, isLoading && styles.buttonDisabled]}
             onPress={handleGoogleLogin}
             disabled={isLoading}
           >
-            <View style={styles.googleIcon}>
-              <Text style={styles.googleIconText}>G</Text>
-            </View>
             <Text style={styles.googleButtonText}>
               {isLoading ? 'Signing in...' : 'Sign in with Google'}
             </Text>
           </TouchableOpacity>
-        </View>
 
-        <View style={styles.infoBox}>
-          <Text style={styles.infoText}>
-            <Text style={styles.infoBold}>Invite-only beta:</Text> Registration requires a valid invite code.
+          <Text style={styles.featuresText}>
+            Track meals • Monitor health • Sync devices
           </Text>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              By signing in, you agree to our{' '}
+              <Text style={styles.footerLink}>Terms of Service</Text>
+              {' '}and{' '}
+              <Text style={styles.footerLink}>Privacy Policy</Text>
+            </Text>
+          </View>
+
+          <View style={styles.contactFooter}>
+            <Text style={styles.contactText}>Questions or feedback?</Text>
+            <TouchableOpacity onPress={() => Linking.openURL('mailto:hello@huginn.health')}>
+              <Text style={styles.contactEmail}>hello@huginn.health</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -236,109 +186,148 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background.black,
+    backgroundColor: '#0F172A',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   authContainer: {
-    backgroundColor: COLORS.background.primary,
-    padding: 32,
+    backgroundColor: '#1E293B',
+    padding: 48,
     borderRadius: 16,
     width: '100%',
-    maxWidth: 400,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    borderTopWidth: 3,
-    borderTopColor: COLORS.accent.primary,
+    maxWidth: 420,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.5,
+    shadowRadius: 60,
+    elevation: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
-  logo: {
-    width: '80%',
-    height: 120,
-    marginBottom: 24,
+  crowImage: {
+    width: 180,
+    height: 180,
     alignSelf: 'center',
+    marginBottom: 8,
   },
-  tagline: {
-    fontSize: 14,
-    color: COLORS.text.tertiary,
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#F1F5F9',
     textAlign: 'center',
-    marginBottom: 24,
-  },
-  features: {
-    backgroundColor: COLORS.background.secondary,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-  feature: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginBottom: 12,
   },
-  checkmark: {
-    color: COLORS.accent.primary,
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginRight: 12,
+  subtitle: {
+    fontSize: 15,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 22,
   },
-  featureText: {
-    color: COLORS.text.secondary,
-    fontSize: 14,
+  deviceText: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 0,
   },
-  buttonGroup: {
-    marginBottom: 20,
+  deviceBold: {
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  betaWarning: {
+    backgroundColor: 'rgba(251, 191, 36, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.3)',
+    borderRadius: 8,
+    padding: 12,
+    paddingHorizontal: 16,
+    marginTop: 24,
+    marginBottom: 24,
+  },
+  betaTitle: {
+    fontSize: 13,
+    color: '#FBBF24',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  betaSubtext: {
+    fontSize: 12,
+    color: '#F59E0B',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  requestLink: {
+    fontSize: 12,
+    color: '#14B8A6',
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
   },
   googleButton: {
-    backgroundColor: COLORS.accent.primary,
+    backgroundColor: '#14B8A6',
     paddingVertical: 14,
+    paddingHorizontal: 32,
     borderRadius: 8,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  googleIcon: {
-    width: 20,
-    height: 20,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  googleIconText: {
-    color: COLORS.accent.primary,
-    fontSize: 14,
-    fontWeight: 'bold',
+    shadowColor: 'rgba(20, 184, 166, 0.3)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    elevation: 8,
   },
   googleButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     color: 'white',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
-  infoBox: {
-    backgroundColor: COLORS.background.secondary,
-    padding: 12,
-    borderRadius: 8,
-  },
-  infoText: {
+  featuresText: {
     fontSize: 12,
-    color: COLORS.text.tertiary,
+    color: '#64748B',
     textAlign: 'center',
-    lineHeight: 18,
+    marginTop: 24,
+    lineHeight: 17,
   },
-  infoBold: {
-    color: COLORS.accent.primary,
-    fontWeight: '600',
+  footer: {
+    marginTop: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  footerText: {
+    fontSize: 11,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  footerLink: {
+    color: '#14B8A6',
+  },
+  contactFooter: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  contactText: {
+    fontSize: 11,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 17,
+    marginBottom: 4,
+  },
+  contactEmail: {
+    fontSize: 12,
+    color: '#14B8A6',
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
