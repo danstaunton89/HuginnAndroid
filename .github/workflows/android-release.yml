@@ -160,21 +160,22 @@ jobs:
           ).execute()
           print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
-          # Create release as draft (auto-publish requires production release first)
+          # Create release on closed testing track (alpha)
+          # Closed testing allows specific testers only and may enable auto-publish
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
-              track='internal',
+              track='alpha',
               body={
                   'releases': [{
                       'name': str(VERSION),
                       'versionCodes': [str(VERSION)],
-                      'status': 'draft',
+                      'status': 'completed',
                       'releaseNotes': [{'language': 'en-US', 'text': f'Version {VERSION}'}]
                   }]
               }
           ).execute()
-          print(f"Release {VERSION} uploaded as draft - publish in Play Console")
+          print(f"Release {VERSION} published to closed testing!")
 
           # Commit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
