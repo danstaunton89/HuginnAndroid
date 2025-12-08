@@ -88,8 +88,8 @@ android {
         applicationId 'com.blacksquirrel.healthtracker'
         minSdkVersion 24
         targetSdkVersion 35
-        versionCode 82
-        versionName "82"
+        versionCode 70
+        versionName "70"
     }
     signingConfigs {
         debug {

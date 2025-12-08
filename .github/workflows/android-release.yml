@@ -17,105 +17,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Auto-increment version code if needed
+      - name: Extract version from tag
         if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          echo "Checking version code against Google Play Store..."
+          # Extract version number from tag (v70 -> 70)
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          echo "Using version from tag: $TAG_VERSION"
 
-          # Get current versionCode from build.gradle
-          CURRENT_VERSION=$(grep "versionCode" android/app/build.gradle | head -1 | awk '{print $2}')
-          echo "Current versionCode in build.gradle: $CURRENT_VERSION"
+          # Update build.gradle with this version
+          sed -i "s/versionCode [0-9]*/versionCode $TAG_VERSION/" android/app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$TAG_VERSION\"/" android/app/build.gradle
 
-          # Install Google API client
-          pip install --quiet google-auth google-auth-httplib2 google-api-python-client
-
-          # Create temp service account file
-          echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
-
-          # Query Play Store and get next version code
-          NEXT_VERSION=$(python3 << END
-          import sys
-          from google.oauth2 import service_account
-          from googleapiclient.discovery import build
-
-          SCOPES = ['https://www.googleapis.com/auth/androidpublisher']
-          PACKAGE_NAME = 'com.blacksquirrel.healthtracker'
-
-          try:
-              credentials = service_account.Credentials.from_service_account_file(
-                  'service-account.json', scopes=SCOPES)
-
-              service = build('androidpublisher', 'v3', credentials=credentials)
-
-              # Create edit
-              edit = service.edits().insert(packageName=PACKAGE_NAME, body={}).execute()
-              edit_id = edit['id']
-
-              # Get internal track
-              track = service.edits().tracks().get(
-                  packageName=PACKAGE_NAME,
-                  editId=edit_id,
-                  track='internal'
-              ).execute()
-
-              # Get latest version code
-              latest_version = 0
-              if 'releases' in track and len(track['releases']) > 0:
-                  for release in track['releases']:
-                      version_codes = release.get('versionCodes', [])
-                      if version_codes:
-                          latest_version = max(latest_version, max(int(v) for v in version_codes))
-
-              current = int($CURRENT_VERSION)
-              next_version = max(current, latest_version + 1)
-
-              print(f"{next_version}", file=sys.stderr)
-              print(f"Latest Play Store version: {latest_version}", file=sys.stderr)
-              print(f"Current build.gradle version: {current}", file=sys.stderr)
-              print(f"Next version will be: {next_version}", file=sys.stderr)
-
-              print(next_version)
-
-          except Exception as e:
-              print(f"ERROR: Failed to query Play Store: {e}", file=sys.stderr)
-              # If query fails, use current version
-              print($CURRENT_VERSION)
-          END
-          )
-
-          # Cleanup
-          rm -f service-account.json
-
-          echo "Next version code: $NEXT_VERSION"
-
-          # Update build.gradle if needed
-          if [ "$NEXT_VERSION" != "$CURRENT_VERSION" ]; then
-            echo "Updating versionCode from $CURRENT_VERSION to $NEXT_VERSION"
-            sed -i "s/versionCode $CURRENT_VERSION/versionCode $NEXT_VERSION/" android/app/build.gradle
-
-            # Also update versionName to match versionCode (keeps release naming consistent)
-            CURRENT_VERSION_NAME=$(grep "versionName" android/app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
-            echo "Current versionName: $CURRENT_VERSION_NAME"
-            sed -i "s/versionName \"$CURRENT_VERSION_NAME\"/versionName \"$NEXT_VERSION\"/" android/app/build.gradle
-            echo "Updated versionName to: $NEXT_VERSION"
-
-            # Verify the changes
-            NEW_VERSION=$(grep "versionCode" android/app/build.gradle | head -1 | awk '{print $2}')
-            NEW_VERSION_NAME=$(grep "versionName" android/app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
-            echo "Updated versionCode in build.gradle: $NEW_VERSION"
-            echo "Updated versionName in build.gradle: $NEW_VERSION_NAME"
-
-            # Commit the change
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add android/app/build.gradle
-            git commit -m "Auto-increment version to $NEXT_VERSION [skip ci]"
-            git push origin HEAD:main
-          else
-            echo "Version code is already correct ($CURRENT_VERSION)"
-          fi
+          # Verify
+          echo "Updated build.gradle:"
+          grep -E "versionCode|versionName" android/app/build.gradle
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -164,24 +80,17 @@ jobs:
           path: android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 30
 
-      - name: Upload to Google Play Store and cleanup old releases
+      - name: Upload to Google Play Store
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          echo "Uploading to Google Play and cleaning up old releases..."
+          echo "Uploading version $VERSION to Google Play..."
 
-          # Get current versionCode
-          VERSION_CODE=$(grep "versionCode" android/app/build.gradle | head -1 | awk '{print $2}')
-          echo "Uploading versionCode: $VERSION_CODE"
-
-          # Install Google API client
           pip install --quiet google-auth google-auth-httplib2 google-api-python-client
 
-          # Create temp service account file
           echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
 
-          # Upload AAB and clean up old releases in ONE edit session
           python3 << END
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
@@ -189,7 +98,7 @@ jobs:
 
           SCOPES = ['https://www.googleapis.com/auth/androidpublisher']
           PACKAGE_NAME = 'com.blacksquirrel.healthtracker'
-          VERSION_CODE = int($VERSION_CODE)
+          VERSION = $VERSION
           AAB_FILE = 'android/app/build/outputs/bundle/release/app-release.aab'
 
           credentials = service_account.Credentials.from_service_account_file(
@@ -202,7 +111,7 @@ jobs:
           edit_id = edit['id']
           print(f"Created edit: {edit_id}")
 
-          # Upload the AAB file
+          # Upload AAB
           print(f"Uploading {AAB_FILE}...")
           bundle_response = service.edits().bundles().upload(
               packageName=PACKAGE_NAME,
@@ -211,38 +120,26 @@ jobs:
           ).execute()
           print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
-          # Get current track to see existing releases
-          current_track = service.edits().tracks().get(
-              packageName=PACKAGE_NAME,
-              editId=edit_id,
-              track='internal'
-          ).execute()
-          print(f"Current track state: {current_track}")
-
-          # Update track - replace ALL releases with the new one
-          # This should remove old drafts and the old published release
+          # Create release - replaces any existing release on internal track
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
               track='internal',
               body={
                   'releases': [{
-                      'name': str(VERSION_CODE),
-                      'versionCodes': [str(VERSION_CODE)],
+                      'name': str(VERSION),
+                      'versionCodes': [str(VERSION)],
                       'status': 'completed',
-                      'releaseNotes': [{'language': 'en-US', 'text': f'Version {VERSION_CODE}'}]
+                      'releaseNotes': [{'language': 'en-US', 'text': f'Version {VERSION}'}]
                   }]
               }
           ).execute()
-          print(f"Track updated with release {VERSION_CODE}")
+          print(f"Created release {VERSION}")
 
-          # Commit the edit
+          # Commit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
-          print(f"Successfully published release {VERSION_CODE}!")
-          print(f"Edit ID: {commit['id']}")
+          print(f"Published release {VERSION} to internal testing!")
           END
 
-          # Cleanup
           rm -f service-account.json
-
-          echo "Upload complete!"
+          echo "Done!"
