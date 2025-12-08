@@ -217,8 +217,7 @@ jobs:
           for release in releases:
               # versionCodes is a list of strings from the API
               if str(VERSION_CODE) in release.get('versionCodes', []):
-                  # This is our new release - mark as completed
-                  release['status'] = 'completed'
+                  # Found our new release - keep it as is (draft)
                   new_release = release
                   break
 
@@ -226,7 +225,8 @@ jobs:
               print(f"ERROR: Could not find draft release for version {VERSION_CODE}")
               exit(1)
 
-          # Update track with ONLY the new release (replaces all previous releases)
+          # Update track with ONLY the new draft release (removes all old releases)
+          # This ensures only ONE draft exists for manual publishing
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
@@ -238,7 +238,7 @@ jobs:
 
           # Commit the edit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
-          print(f"Published release {VERSION_CODE}: {commit}")
+          print(f"Cleaned up old releases. Version {VERSION_CODE} is ready to publish manually: {commit}")
           END
 
           # Cleanup
