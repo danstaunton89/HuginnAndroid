@@ -160,7 +160,7 @@ jobs:
           ).execute()
           print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
-          # Create release - auto-publish to internal testing
+          # Create release as draft (auto-publish requires production release first)
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
@@ -169,12 +169,12 @@ jobs:
                   'releases': [{
                       'name': str(VERSION),
                       'versionCodes': [str(VERSION)],
-                      'status': 'completed',
+                      'status': 'draft',
                       'releaseNotes': [{'language': 'en-US', 'text': f'Version {VERSION}'}]
                   }]
               }
           ).execute()
-          print(f"Release {VERSION} published to internal testing!")
+          print(f"Release {VERSION} uploaded as draft - publish in Play Console")
 
           # Commit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
