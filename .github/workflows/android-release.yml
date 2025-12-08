@@ -109,7 +109,7 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add android/app/build.gradle
             git commit -m "Auto-increment version to $NEXT_VERSION [skip ci]"
-            git push
+            git push origin HEAD:main
           else
             echo "Version code is already correct ($CURRENT_VERSION)"
           fi
