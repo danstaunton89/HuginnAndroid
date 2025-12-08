@@ -92,15 +92,23 @@ jobs:
             echo "Updating versionCode from $CURRENT_VERSION to $NEXT_VERSION"
             sed -i "s/versionCode $CURRENT_VERSION/versionCode $NEXT_VERSION/" android/app/build.gradle
 
-            # Verify the change
+            # Also update versionName to match versionCode (keeps release naming consistent)
+            CURRENT_VERSION_NAME=$(grep "versionName" android/app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            echo "Current versionName: $CURRENT_VERSION_NAME"
+            sed -i "s/versionName \"$CURRENT_VERSION_NAME\"/versionName \"$NEXT_VERSION\"/" android/app/build.gradle
+            echo "Updated versionName to: $NEXT_VERSION"
+
+            # Verify the changes
             NEW_VERSION=$(grep "versionCode" android/app/build.gradle | head -1 | awk '{print $2}')
+            NEW_VERSION_NAME=$(grep "versionName" android/app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
             echo "Updated versionCode in build.gradle: $NEW_VERSION"
+            echo "Updated versionName in build.gradle: $NEW_VERSION_NAME"
 
             # Commit the change
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add android/app/build.gradle
-            git commit -m "Auto-increment versionCode to $NEXT_VERSION [skip ci]"
+            git commit -m "Auto-increment version to $NEXT_VERSION [skip ci]"
             git push
           else
             echo "Version code is already correct ($CURRENT_VERSION)"
@@ -201,6 +209,7 @@ jobs:
           print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
           # Update track with ONLY this new release (removes all old releases)
+          # status: 'completed' auto-publishes to internal testers
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
@@ -208,16 +217,16 @@ jobs:
               body={
                   'releases': [{
                       'versionCodes': [str(VERSION_CODE)],
-                      'status': 'draft',
+                      'status': 'completed',
                       'inAppUpdatePriority': 2
                   }]
               }
           ).execute()
-          print(f"Updated track - removed old releases, added version {VERSION_CODE} as draft")
+          print(f"Updated track - removed old releases, published version {VERSION_CODE} to internal testing")
 
           # Commit the edit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
-          print(f"Successfully uploaded! Version {VERSION_CODE} is ready to publish manually.")
+          print(f"Successfully published version {VERSION_CODE} to internal testing!")
           print(f"Edit ID: {commit['id']}")
           END
 
