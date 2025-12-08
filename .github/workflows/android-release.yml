@@ -2,8 +2,8 @@ name: Android Release Build
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -17,17 +17,58 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Get next version from Play Store
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          # Extract version number from tag (v70 -> 70)
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
-          echo "Using version from tag: $TAG_VERSION"
+          pip install --quiet google-auth google-auth-httplib2 google-api-python-client
+
+          echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
+
+          VERSION=$(python3 << 'END'
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          SCOPES = ['https://www.googleapis.com/auth/androidpublisher']
+          PACKAGE_NAME = 'com.blacksquirrel.healthtracker'
+
+          credentials = service_account.Credentials.from_service_account_file(
+              'service-account.json', scopes=SCOPES)
+          service = build('androidpublisher', 'v3', credentials=credentials)
+
+          # Get all version codes from internal track
+          edit = service.edits().insert(packageName=PACKAGE_NAME, body={}).execute()
+          edit_id = edit['id']
+
+          tracks = service.edits().tracks().get(
+              packageName=PACKAGE_NAME,
+              editId=edit_id,
+              track='internal'
+          ).execute()
+
+          # Find the highest version code
+          max_version = 90  # Start from 90 (our last successful release)
+          if 'releases' in tracks:
+              for release in tracks['releases']:
+                  if 'versionCodes' in release:
+                      for vc in release['versionCodes']:
+                          if int(vc) > max_version:
+                              max_version = int(vc)
+
+          # Increment by 1
+          next_version = max_version + 1
+          print(next_version)
+          END
+          )
+
+          rm -f service-account.json
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Next version will be: $VERSION"
 
           # Update build.gradle with this version
-          sed -i "s/versionCode [0-9]*/versionCode $TAG_VERSION/" android/app/build.gradle
-          sed -i "s/versionName \"[^\"]*\"/versionName \"$TAG_VERSION\"/" android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION/" android/app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION\"/" android/app/build.gradle
 
           # Verify
           echo "Updated build.gradle:"
@@ -81,7 +122,6 @@ jobs:
           retention-days: 30
 
       - name: Upload to Google Play Store
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
@@ -120,8 +160,7 @@ jobs:
           ).execute()
           print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
-          # Create release - replaces any existing release on internal track
-          # Using 'completed' status for automatic publishing to internal testers
+          # Create release - auto-publish to internal testing
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
@@ -139,7 +178,7 @@ jobs:
 
           # Commit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
-          print(f"Published release {VERSION} to internal testing!")
+          print(f"Successfully published version {VERSION}!")
           END
 
           rm -f service-account.json
