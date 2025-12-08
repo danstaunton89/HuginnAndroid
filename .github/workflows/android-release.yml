@@ -36,24 +36,26 @@ jobs:
               'service-account.json', scopes=SCOPES)
           service = build('androidpublisher', 'v3', credentials=credentials)
 
-          # Get all version codes from internal track
           edit = service.edits().insert(packageName=PACKAGE_NAME, body={}).execute()
           edit_id = edit['id']
 
-          tracks = service.edits().tracks().get(
-              packageName=PACKAGE_NAME,
-              editId=edit_id,
-              track='internal'
-          ).execute()
-
-          # Find the highest version code
-          max_version = 90  # Start from 90 (our last successful release)
-          if 'releases' in tracks:
-              for release in tracks['releases']:
-                  if 'versionCodes' in release:
-                      for vc in release['versionCodes']:
-                          if int(vc) > max_version:
-                              max_version = int(vc)
+          # Check ALL tracks for the highest version code
+          max_version = 90
+          for track_name in ['internal', 'alpha', 'beta', 'production']:
+              try:
+                  tracks = service.edits().tracks().get(
+                      packageName=PACKAGE_NAME,
+                      editId=edit_id,
+                      track=track_name
+                  ).execute()
+                  if 'releases' in tracks:
+                      for release in tracks['releases']:
+                          if 'versionCodes' in release:
+                              for vc in release['versionCodes']:
+                                  if int(vc) > max_version:
+                                      max_version = int(vc)
+              except Exception:
+                  pass  # Track may not exist
 
           # Increment by 1
           next_version = max_version + 1
