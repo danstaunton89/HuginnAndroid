@@ -153,27 +153,16 @@ jobs:
           path: android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 30
 
-      - name: Upload to Google Play Store
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.blacksquirrel.healthtracker
-          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
-          track: internal
-          status: draft
-          inAppUpdatePriority: 2
-
-      - name: Publish draft release automatically
+      - name: Upload to Google Play Store and cleanup old releases
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          echo "Publishing draft release to internal testing..."
+          echo "Uploading to Google Play and cleaning up old releases..."
 
           # Get current versionCode
           VERSION_CODE=$(grep "versionCode" android/app/build.gradle | head -1 | awk '{print $2}')
-          echo "Publishing versionCode: $VERSION_CODE"
+          echo "Uploading versionCode: $VERSION_CODE"
 
           # Install Google API client
           pip install --quiet google-auth google-auth-httplib2 google-api-python-client
@@ -181,14 +170,16 @@ jobs:
           # Create temp service account file
           echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
 
-          # Publish the draft release by updating existing draft to completed
+          # Upload AAB and clean up old releases in ONE edit session
           python3 << END
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
 
           SCOPES = ['https://www.googleapis.com/auth/androidpublisher']
           PACKAGE_NAME = 'com.blacksquirrel.healthtracker'
           VERSION_CODE = int($VERSION_CODE)
+          AAB_FILE = 'android/app/build/outputs/bundle/release/app-release.aab'
 
           credentials = service_account.Credentials.from_service_account_file(
               'service-account.json', scopes=SCOPES)
@@ -198,50 +189,39 @@ jobs:
           # Create edit
           edit = service.edits().insert(packageName=PACKAGE_NAME, body={}).execute()
           edit_id = edit['id']
-
           print(f"Created edit: {edit_id}")
 
-          # Get current track status
-          track = service.edits().tracks().get(
+          # Upload the AAB file
+          print(f"Uploading {AAB_FILE}...")
+          bundle_response = service.edits().bundles().upload(
               packageName=PACKAGE_NAME,
               editId=edit_id,
-              track='internal'
+              media_body=MediaFileUpload(AAB_FILE, mimetype='application/octet-stream')
           ).execute()
+          print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
-          print(f"Current track: {track}")
-
-          # Find the draft release and update its status to completed
-          releases = track.get('releases', [])
-          new_release = None
-
-          for release in releases:
-              # versionCodes is a list of strings from the API
-              if str(VERSION_CODE) in release.get('versionCodes', []):
-                  # Found our new release - keep it as is (draft)
-                  new_release = release
-                  break
-
-          if not new_release:
-              print(f"ERROR: Could not find draft release for version {VERSION_CODE}")
-              exit(1)
-
-          # Update track with ONLY the new draft release (removes all old releases)
-          # This ensures only ONE draft exists for manual publishing
+          # Update track with ONLY this new release (removes all old releases)
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
               track='internal',
-              body={'releases': [new_release]}
+              body={
+                  'releases': [{
+                      'versionCodes': [str(VERSION_CODE)],
+                      'status': 'draft',
+                      'inAppUpdatePriority': 2
+                  }]
+              }
           ).execute()
-
-          print(f"Updated track: {track_response}")
+          print(f"Updated track - removed old releases, added version {VERSION_CODE} as draft")
 
           # Commit the edit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
-          print(f"Cleaned up old releases. Version {VERSION_CODE} is ready to publish manually: {commit}")
+          print(f"Successfully uploaded! Version {VERSION_CODE} is ready to publish manually.")
+          print(f"Edit ID: {commit['id']}")
           END
 
           # Cleanup
           rm -f service-account.json
 
-          echo "Successfully published release!"
+          echo "Upload complete!"
