@@ -211,25 +211,34 @@ jobs:
           ).execute()
           print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
-          # Update track with ONLY this new release (removes all old releases)
-          # status: 'completed' auto-publishes to internal testers
+          # Get current track to see existing releases
+          current_track = service.edits().tracks().get(
+              packageName=PACKAGE_NAME,
+              editId=edit_id,
+              track='internal'
+          ).execute()
+          print(f"Current track state: {current_track}")
+
+          # Update track - replace ALL releases with the new one
+          # This should remove old drafts and the old published release
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
               track='internal',
               body={
                   'releases': [{
+                      'name': str(VERSION_CODE),
                       'versionCodes': [str(VERSION_CODE)],
                       'status': 'completed',
-                      'inAppUpdatePriority': 2
+                      'releaseNotes': [{'language': 'en-US', 'text': f'Version {VERSION_CODE}'}]
                   }]
               }
           ).execute()
-          print(f"Updated track - removed old releases, published version {VERSION_CODE} to internal testing")
+          print(f"Track updated with release {VERSION_CODE}")
 
           # Commit the edit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
-          print(f"Successfully published version {VERSION_CODE} to internal testing!")
+          print(f"Successfully published release {VERSION_CODE}!")
           print(f"Edit ID: {commit['id']}")
           END
 
