@@ -121,6 +121,7 @@ jobs:
           print(f"Uploaded bundle with versionCode: {bundle_response['versionCode']}")
 
           # Create release - replaces any existing release on internal track
+          # Using 'draft' status - Google Play requires manual publish for apps without production release
           track_response = service.edits().tracks().update(
               packageName=PACKAGE_NAME,
               editId=edit_id,
@@ -129,12 +130,12 @@ jobs:
                   'releases': [{
                       'name': str(VERSION),
                       'versionCodes': [str(VERSION)],
-                      'status': 'completed',
+                      'status': 'draft',
                       'releaseNotes': [{'language': 'en-US', 'text': f'Version {VERSION}'}]
                   }]
               }
           ).execute()
-          print(f"Created release {VERSION}")
+          print(f"Created release {VERSION} as draft - publish manually in Play Console")
 
           # Commit
           commit = service.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
