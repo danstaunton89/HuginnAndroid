@@ -5,9 +5,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+      day: "monday"
+    open-pull-requests-limit: 5
     versioning-strategy: increase-if-necessary
     labels:
       - "dependencies"
-      - "security"
       - "mobile"
+    groups:
+      # Group all minor and patch updates together
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Major versions get their own PRs for manual review
