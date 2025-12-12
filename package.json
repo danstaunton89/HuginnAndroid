@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",
-    "@react-native/babel-preset": "^0.81.1",
+    "@react-native/babel-preset": "^0.83.0",
     "@react-native/metro-config": "latest",
     "metro-react-native-babel-preset": "latest"
   },
